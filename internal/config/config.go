@@ -7,20 +7,20 @@ import (
 
 // Config holds all server configuration.
 type Config struct {
-	Host            string
-	Port            int
-	DatabasePath    string
-	MaxRooms        int
-	TurnTimeoutSec  int
+	Host              string
+	Port              int
+	DatabasePath      string
+	MaxRooms          int
+	TurnTimeoutSec    int
 	ReconnectGraceSec int
-	AllowOrigins    string
+	AllowOrigins      string
 }
 
 // Load reads configuration from environment variables with defaults.
 func Load() *Config {
 	return &Config{
 		Host:              getEnv("LUDO_HOST", "0.0.0.0"),
-		Port:              getEnvInt("LUDO_PORT", 8080),
+		Port:              getEnvInt("LUDO_PORT", 8096),
 		DatabasePath:      getEnv("LUDO_DB_PATH", "./ludo.db"),
 		MaxRooms:          getEnvInt("LUDO_MAX_ROOMS", 100),
 		TurnTimeoutSec:    getEnvInt("LUDO_TURN_TIMEOUT", 30),
