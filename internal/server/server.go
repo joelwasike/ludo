@@ -83,7 +83,7 @@ func (s *Server) setupRoutes() {
 
 		// Wallet endpoints
 		r.Route("/wallet", func(r chi.Router) {
-			r.Get("/", s.walletHandler.HandleGetBalance)
+			r.Get("/balance", s.walletHandler.HandleGetBalance)
 			r.Get("/transactions", s.walletHandler.HandleGetTransactions)
 			r.Post("/deposit", s.walletHandler.HandleDeposit)
 			r.Post("/withdraw", s.walletHandler.HandleWithdraw)
