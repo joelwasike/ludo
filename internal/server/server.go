@@ -131,7 +131,10 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	playerID := uuid.New().String()
+	playerID := r.URL.Query().Get("player_id")
+	if playerID == "" {
+		playerID = uuid.New().String()
+	}
 	sessionID := uuid.New().String()
 
 	client := ws.NewClient(s.hub, conn, playerID, sessionID)
