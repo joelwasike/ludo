@@ -4,22 +4,25 @@ import (
 	"math/rand"
 	"sync"
 
+	"github.com/ludo/server/internal/wallet"
 	"github.com/ludo/server/internal/ws"
 	"github.com/ludo/server/pkg/models"
 )
 
 // Manager handles room lifecycle: creation, lookup, and cleanup.
 type Manager struct {
-	rooms map[string]*Room // code -> Room
-	hub   *ws.Hub
-	mu    sync.RWMutex
+	rooms     map[string]*Room // code -> Room
+	hub       *ws.Hub
+	walletSvc *wallet.Service
+	mu        sync.RWMutex
 }
 
 // NewManager creates a new room manager.
-func NewManager(hub *ws.Hub) *Manager {
+func NewManager(hub *ws.Hub, walletSvc *wallet.Service) *Manager {
 	return &Manager{
-		rooms: make(map[string]*Room),
-		hub:   hub,
+		rooms:     make(map[string]*Room),
+		hub:       hub,
+		walletSvc: walletSvc,
 	}
 }
 
@@ -27,7 +30,7 @@ func NewManager(hub *ws.Hub) *Manager {
 func (m *Manager) CreateRoom(hostID, hostName string, settings models.RoomSettings) (*Room, string) {
 	code := m.generateUniqueCode()
 
-	room := NewRoom(code, hostID, hostName, settings, m.hub)
+	room := NewRoom(code, hostID, hostName, settings, m.hub, m.walletSvc)
 
 	m.mu.Lock()
 	m.rooms[code] = room

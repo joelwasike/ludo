@@ -16,8 +16,11 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 }
 
 type createRoomRequest struct {
-	PlayerName string `json:"player_name"`
-	MaxPlayers int    `json:"max_players"`
+	PlayerName  string  `json:"player_name"`
+	MaxPlayers  int     `json:"max_players"`
+	IsPaid      bool    `json:"is_paid"`
+	StakeAmount float64 `json:"stake_amount"`
+	Currency    string  `json:"currency"`
 }
 
 func (s *Server) handleCreateRoom(w http.ResponseWriter, r *http.Request) {
@@ -33,15 +36,24 @@ func (s *Server) handleCreateRoom(w http.ResponseWriter, r *http.Request) {
 	if req.MaxPlayers < 2 || req.MaxPlayers > 4 {
 		req.MaxPlayers = 4
 	}
+	if req.Currency == "" {
+		req.Currency = "KES"
+	}
 
-	// The actual player ID will be assigned on WebSocket connection
-	// For REST, we generate a temporary host ID
+	if req.IsPaid && req.StakeAmount < models.MinBetAmount {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "minimum stake is 20 KES"})
+		return
+	}
+
 	hostID := "pending-" + req.PlayerName
 
 	settings := models.RoomSettings{
 		MaxPlayers:     req.MaxPlayers,
 		TurnTimeoutSec: s.cfg.TurnTimeoutSec,
 		AllowBots:      true,
+		IsPaid:         req.IsPaid,
+		StakeAmount:    req.StakeAmount,
+		Currency:       req.Currency,
 	}
 
 	_, code := s.roomManager.CreateRoom(hostID, req.PlayerName, settings)

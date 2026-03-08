@@ -46,6 +46,11 @@ func (db *DB) Close() error {
 	return db.conn.Close()
 }
 
+// Conn returns the underlying sql.DB connection.
+func (db *DB) Conn() *sql.DB {
+	return db.conn
+}
+
 func (db *DB) migrate() error {
 	migrations := []string{
 		`CREATE TABLE IF NOT EXISTS players (
@@ -78,6 +83,27 @@ func (db *DB) migrate() error {
 			FOREIGN KEY (game_id) REFERENCES game_history(id),
 			FOREIGN KEY (player_id) REFERENCES players(id)
 		)`,
+		`CREATE TABLE IF NOT EXISTS wallets (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			player_id TEXT NOT NULL UNIQUE,
+			balance REAL DEFAULT 0,
+			currency TEXT DEFAULT 'KES',
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE TABLE IF NOT EXISTS transactions (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			wallet_id INTEGER NOT NULL,
+			type TEXT NOT NULL,
+			amount REAL NOT NULL,
+			reference TEXT DEFAULT '',
+			description TEXT DEFAULT '',
+			status TEXT DEFAULT 'pending',
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (wallet_id) REFERENCES wallets(id)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_transactions_wallet ON transactions(wallet_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_transactions_reference ON transactions(reference)`,
 	}
 
 	for _, m := range migrations {

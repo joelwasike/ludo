@@ -128,9 +128,12 @@ const (
 
 // RoomSettings configurable per room.
 type RoomSettings struct {
-	MaxPlayers     int  `json:"max_players"`
-	TurnTimeoutSec int  `json:"turn_timeout_sec"`
-	AllowBots      bool `json:"allow_bots"`
+	MaxPlayers     int     `json:"max_players"`
+	TurnTimeoutSec int     `json:"turn_timeout_sec"`
+	AllowBots      bool    `json:"allow_bots"`
+	IsPaid         bool    `json:"is_paid"`
+	StakeAmount    float64 `json:"stake_amount"` // Per-player stake in KES
+	Currency       string  `json:"currency"`
 }
 
 // RoomInfo is the public view of a room.

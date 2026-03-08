@@ -14,6 +14,7 @@ type Config struct {
 	TurnTimeoutSec    int
 	ReconnectGraceSec int
 	AllowOrigins      string
+	CallbackBaseURL   string
 }
 
 // Load reads configuration from environment variables with defaults.
@@ -26,6 +27,7 @@ func Load() *Config {
 		TurnTimeoutSec:    getEnvInt("LUDO_TURN_TIMEOUT", 30),
 		ReconnectGraceSec: getEnvInt("LUDO_RECONNECT_GRACE", 120),
 		AllowOrigins:      getEnv("LUDO_ALLOW_ORIGINS", "*"),
+		CallbackBaseURL:   getEnv("LUDO_CALLBACK_URL", "https://ludo-api.chessd.games/api/payment/callback"),
 	}
 }
 

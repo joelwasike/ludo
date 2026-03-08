@@ -4,12 +4,14 @@ import (
 	"encoding/json"
 	"log/slog"
 	"math/rand"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/ludo/server/internal/ai"
 	"github.com/ludo/server/internal/game"
+	"github.com/ludo/server/internal/wallet"
 	"github.com/ludo/server/internal/ws"
 	"github.com/ludo/server/pkg/models"
 )
@@ -35,6 +37,7 @@ type Room struct {
 	players    []*PlayerSession
 	gameState  *models.GameState
 	hub        *ws.Hub
+	walletSvc  *wallet.Service
 	messages   chan playerMessage
 	done       chan struct{}
 	turnTimer  *time.Timer
@@ -48,7 +51,7 @@ type playerMessage struct {
 }
 
 // NewRoom creates a new room.
-func NewRoom(code, hostID, hostName string, settings models.RoomSettings, hub *ws.Hub) *Room {
+func NewRoom(code, hostID, hostName string, settings models.RoomSettings, hub *ws.Hub, walletSvc *wallet.Service) *Room {
 	if settings.MaxPlayers == 0 {
 		settings.MaxPlayers = 4
 	}
@@ -62,6 +65,7 @@ func NewRoom(code, hostID, hostName string, settings models.RoomSettings, hub *w
 		settings:  settings,
 		status:    models.RoomWaiting,
 		hub:       hub,
+		walletSvc: walletSvc,
 		messages:  make(chan playerMessage, 64),
 		done:      make(chan struct{}),
 		createdAt: time.Now(),
@@ -208,6 +212,43 @@ func (r *Room) handleJoin(playerID string, msg *ws.Message) {
 
 	var payload ws.JoinRoomPayload
 	json.Unmarshal(msg.Payload, &payload)
+
+	// Check if this is the host claiming the pending slot
+	if strings.HasPrefix(r.hostID, "pending-") && len(r.players) > 0 && r.players[0].PlayerID == r.hostID {
+		// Replace the pending host with the real player
+		r.hostID = playerID
+		r.players[0].PlayerID = playerID
+		r.players[0].DisplayName = payload.PlayerName
+		r.players[0].SessionToken = uuid.New().String()
+		r.players[0].IsConnected = true
+
+		// Lock bet for paid games
+		if r.settings.IsPaid && r.walletSvc != nil {
+			if err := r.walletSvc.LockBet(playerID, r.settings.StakeAmount); err != nil {
+				errMsg, _ := ws.NewErrorMessage("INSUFFICIENT_BALANCE", "Cannot join: "+err.Error())
+				r.hub.SendToPlayer(playerID, errMsg)
+				return
+			}
+		}
+
+		data, _ := ws.NewMessage("room_joined", map[string]interface{}{
+			"room":          r.GetRoomInfoUnsafe(),
+			"session_token": r.players[0].SessionToken,
+			"your_color":    r.players[0].Color,
+		})
+		r.hub.SendToPlayer(playerID, data)
+		r.broadcastRoomUpdateUnsafe()
+		return
+	}
+
+	// Lock bet for paid games
+	if r.settings.IsPaid && r.walletSvc != nil {
+		if err := r.walletSvc.LockBet(playerID, r.settings.StakeAmount); err != nil {
+			errMsg, _ := ws.NewErrorMessage("INSUFFICIENT_BALANCE", "Cannot join: "+err.Error())
+			r.hub.SendToPlayer(playerID, errMsg)
+			return
+		}
+	}
 
 	color := r.nextAvailableColor()
 	session := &PlayerSession{
@@ -369,6 +410,27 @@ func (r *Room) handleMoveToken(playerID string, msg *ws.Message) {
 	// Check game over
 	if r.gameState.Winner != nil && game.AllPlayersFinished(r.gameState) {
 		r.status = models.RoomFinished
+
+		// Settle bets for paid games
+		if r.settings.IsPaid && r.walletSvc != nil {
+			humanCount := 0
+			var winnerPlayerID string
+			for _, p := range r.players {
+				if !p.IsBot {
+					humanCount++
+				}
+				if p.Color == *r.gameState.Winner {
+					winnerPlayerID = p.PlayerID
+				}
+			}
+			totalPot := r.settings.StakeAmount * float64(humanCount)
+			if winnerPlayerID != "" && !r.playerByID(winnerPlayerID).IsBot {
+				if err := r.walletSvc.SettleGame(r.code, winnerPlayerID, totalPot); err != nil {
+					slog.Error("game settlement failed", "room", r.code, "error", err)
+				}
+			}
+		}
+
 		data, _ := ws.NewMessage("game_over", map[string]interface{}{
 			"winner":  r.gameState.Winner,
 			"players": r.gameState.Players,
@@ -615,6 +677,15 @@ func (r *Room) GetRoomInfoUnsafe() *models.RoomInfo {
 		Settings:   r.settings,
 		CreatedAt:  r.createdAt,
 	}
+}
+
+func (r *Room) playerByID(id string) *PlayerSession {
+	for _, p := range r.players {
+		if p.PlayerID == id {
+			return p
+		}
+	}
+	return nil
 }
 
 func mustMarshal(v interface{}) json.RawMessage {
