@@ -355,7 +355,12 @@ func (r *Room) handleRollDice(playerID string) {
 	r.hub.BroadcastToRoom(r.code, data)
 
 	if !hasValidMoves {
-		// Turn was auto-advanced
+		// Turn was auto-advanced — notify clients
+		turnData, _ := ws.NewMessage("turn_changed", map[string]interface{}{
+			"current_turn": r.gameState.CurrentTurn,
+			"turn_phase":   r.gameState.TurnPhase,
+		})
+		r.hub.BroadcastToRoom(r.code, turnData)
 		r.resetTurnTimer()
 		r.tryBotTurn()
 	} else {

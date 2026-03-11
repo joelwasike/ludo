@@ -41,25 +41,56 @@ func (h *Hub) Run() {
 	for {
 		select {
 		case client := <-h.register:
+			// Kick any existing client with the same player ID
+			var oldClient *Client
 			h.mu.Lock()
+			for _, existing := range h.clients {
+				if existing.PlayerID == client.PlayerID && existing.SessionID != client.SessionID {
+					oldClient = existing
+					break
+				}
+			}
+			if oldClient != nil {
+				delete(h.clients, oldClient.SessionID)
+			}
 			h.clients[client.SessionID] = client
 			h.mu.Unlock()
+
+			if oldClient != nil {
+				slog.Info("kicked old session", "player", oldClient.PlayerID, "old_session", oldClient.SessionID)
+				if oldClient.RoomID != "" {
+					h.mu.RLock()
+					room, ok := h.rooms[oldClient.RoomID]
+					h.mu.RUnlock()
+					if ok {
+						room.HandlePlayerDisconnect(oldClient.PlayerID)
+					}
+				}
+			}
 			slog.Info("client registered", "player", client.PlayerID, "session", client.SessionID)
 
 		case client := <-h.unregister:
+			var disconnectRoom RoomHandler
+			var disconnectPlayerID string
+
 			h.mu.Lock()
 			if _, ok := h.clients[client.SessionID]; ok {
 				delete(h.clients, client.SessionID)
 				slog.Info("client unregistered", "player", client.PlayerID, "session", client.SessionID)
 
-				// Notify room of disconnect
 				if client.RoomID != "" {
 					if room, ok := h.rooms[client.RoomID]; ok {
-						room.HandlePlayerDisconnect(client.PlayerID)
+						disconnectRoom = room
+						disconnectPlayerID = client.PlayerID
 					}
 				}
 			}
 			h.mu.Unlock()
+
+			// Notify room AFTER releasing the lock to avoid deadlock
+			if disconnectRoom != nil {
+				disconnectRoom.HandlePlayerDisconnect(disconnectPlayerID)
+			}
 		}
 	}
 }
